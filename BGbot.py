@@ -18,6 +18,7 @@ from psycopg2.extras import RealDictCursor
 import threading
 import logging
 
+logging.basicConfig(level=logging.INFO)
 
 DATABASE_URL = os.environ['DATABASE_URL']
 
