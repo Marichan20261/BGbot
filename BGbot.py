@@ -142,6 +142,8 @@ async def daily(interaction: discord.Interaction):
         except Exception:
             last_date = None
 
+    logging.info(f"[daily] today: {today}, last_daily_str: {last_daily_str}, last_date: {last_date}")
+
     if last_date == today:
         # 今日すでに受け取っていたら拒否
         await interaction.followup.send("今日はもう受け取り済みです！")
