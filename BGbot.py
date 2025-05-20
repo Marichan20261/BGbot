@@ -15,6 +15,8 @@ from discord import app_commands, Embed
 from flask import Flask
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import threading
+
 
 DATABASE_URL = os.environ['DATABASE_URL']
 
@@ -29,7 +31,10 @@ def home():
     return "Bot is running!"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
+
+    
 # ユーザーデータの読み込み・保存
 def load_user_data():
     if not os.path.exists(USER_DATA_FILE):
@@ -495,11 +500,17 @@ async def slot(interaction: Interaction, bet: int):
 
     await interaction.response.send_message(embed=embed)
 
+if __name__ == "__main__":
+    # Flaskサーバーを別スレッドで起動
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
 
 # 起動処理
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     print(f"Botログイン完了: {bot.user}")
+
+
 
 bot.run(TOKEN)
