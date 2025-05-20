@@ -325,14 +325,14 @@ async def russianroulette(interaction: discord.Interaction, bet: int):
 # /roulette
 @bot.tree.command(name="roulette", description="赤・黒・数字のいずれかにベット")
 @app_commands.describe(bet="賭けグラント (最大255)", choice="赤・黒 または 0〜36 の数字")
-@channel_only
 async def roulette(interaction: discord.Interaction, bet: int, choice: str):
+    await interaction.response.defer()  # 応答保留
     profile = get_user_profile(interaction.user.id)
     if bet <= 0 or (not has_vip(profile) and bet > MAX_BET):
-        await interaction.response.send_message(f"賭け金は1〜{MAX_BET}グラントまでです。")
+        await interaction.followup.send(f"賭け金は1〜{MAX_BET}グラントまでです。")
         return
     if profile["money"] < bet:
-        await interaction.response.send_message("所持金が足りません。")
+        await interaction.followup.send("所持金が足りません。")
         return
 
     result = random.randint(0, 36)
@@ -359,70 +359,96 @@ async def roulette(interaction: discord.Interaction, bet: int, choice: str):
     titles = check_titles(interaction.user.id, profile)
     if titles:
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
-    await interaction.response.send_message(msg)
+    await interaction.followup.send(msg)
 
 # /blackjack
-@bot.tree.command(name="blackjack", description="21を目指せ！")
+@bot.tree.command(name="blackjack", description="ブラックジャックをプレイ")
 @app_commands.describe(bet="賭けグラント (最大255)")
-@channel_only
 async def blackjack(interaction: discord.Interaction, bet: int):
+    await interaction.response.defer()
     profile = get_user_profile(interaction.user.id)
     if bet <= 0 or (not has_vip(profile) and bet > MAX_BET):
-        await interaction.response.send_message(f"賭け金は1〜{MAX_BET}グラントまでです。")
+        await interaction.followup.send(f"賭け金は1〜{MAX_BET}グラントまでです。")
         return
     if profile["money"] < bet:
-        await interaction.response.send_message("所持金が足りません。")
+        await interaction.followup.send("所持金が足りません。")
         return
+    # ここからブラックジャックゲームロジック開始
 
-    def draw():
-        return random.choice([2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11])  # JQK→10, A→11
+    # トランプのデッキ作成
+    deck = [2,3,4,5,6,7,8,9,10,10,10,10,11] * 4  # 11はエースとして扱う
+    random.shuffle(deck)
 
-    player = [draw(), draw()]
-    dealer = [draw(), draw()]
+    player_cards = [deck.pop(), deck.pop()]
+    dealer_cards = [deck.pop(), deck.pop()]
 
-    def hand_value(hand):
-        total = sum(hand)
-        ace_count = hand.count(11)
-        while total > 21 and ace_count:
-            total -= 10
+    def hand_value(cards):
+        val = sum(cards)
+        ace_count = cards.count(11)
+        while val > 21 and ace_count > 0:
+            val -= 10
             ace_count -= 1
-        return total
+        return val
 
-    player_total = hand_value(player)
-    dealer_total = hand_value(dealer)
+    player_val = hand_value(player_cards)
+    dealer_val = hand_value(dealer_cards)
 
-    while player_total < 17:
-        player.append(draw())
-        player_total = hand_value(player)
+    # プレイヤーにヒット or スタンドの選択肢を表示するView
+    class BlackjackView(View):
+        def __init__(self):
+            super().__init__(timeout=60)
+            self.stand = False
 
-    while dealer_total < 17:
-        dealer.append(draw())
-        dealer_total = hand_value(dealer)
+        async def end_game(self, interaction, player_val, dealer_val):
+            # 結果判定と報酬計算
+            if player_val > 21:
+                # バースト
+                profile["money"] -= bet
+                result_msg = f"あなたの手札は {player_cards} （合計{player_val}）でバースト。負けです。- {bet}グラント"
+            else:
+                # ディーラーのターン
+                while dealer_val < 17:
+                    dealer_cards.append(deck.pop())
+                    dealer_val = hand_value(dealer_cards)
 
-    profile["gamble_count"] += 1
-    result_msg = (
-        f"🧑‍🎲 あなた: {player} → {player_total}\n"
-        f"🤖 ディーラー: {dealer} → {dealer_total}\n"
-    )
+                if dealer_val > 21 or player_val > dealer_val:
+                    profile["money"] += bet
+                    result_msg = (f"あなたの勝ち！あなた: {player_cards}（{player_val}） ディーラー: {dealer_cards}（{dealer_val}）\n"
+                                  f"+{bet}グラント獲得！")
+                elif player_val == dealer_val:
+                    result_msg = (f"引き分けです。あなた: {player_cards}（{player_val}） ディーラー: {dealer_cards}（{dealer_val}）\n"
+                                  f"賭け金は戻ります。")
+                else:
+                    profile["money"] -= bet
+                    result_msg = (f"あなたの負け。あなた: {player_cards}（{player_val}） ディーラー: {dealer_cards}（{dealer_val}）\n"
+                                  f"-{bet}グラント失います。")
 
-    if player_total > 21:
-        profile["money"] -= bet
-        result_msg += f"💥 バースト！ -{bet}グラント"
-    elif dealer_total > 21 or player_total > dealer_total:
-        win = bet * 2
-        profile["money"] += win
-        result_msg += f"🎉 勝利！ +{win}グラント"
-    elif player_total == dealer_total:
-        result_msg += "🤝 引き分け（変動なし）"
-    else:
-        profile["money"] -= bet
-        result_msg += f"😭 敗北 -{bet}グラント"
+            profile["gamble_count"] += 1
+            update_user_profile(user_id, profile)
+            titles = check_titles(user_id, profile)
+            if titles:
+                result_msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
 
-    update_user_profile(interaction.user.id, profile)
-    titles = check_titles(interaction.user.id, profile)
-    if titles:
-        result_msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
-    await interaction.response.send_message(result_msg)
+            await interaction.response.edit_message(content=result_msg, view=None)
+
+        @discord.ui.button(label="ヒット", style=discord.ButtonStyle.primary)
+        async def hit(self, interaction: discord.Interaction, button: Button):
+            player_cards.append(deck.pop())
+            val = hand_value(player_cards)
+            if val > 21:
+                await self.end_game(interaction, val, dealer_val)
+                self.stop()
+            else:
+                await interaction.response.edit_message(content=f"手札: {player_cards}（合計{val}） ヒットかスタンドを選んでください。", view=self)
+
+        @discord.ui.button(label="スタンド", style=discord.ButtonStyle.secondary)
+        async def stand(self, interaction: discord.Interaction, button: Button):
+            player_val_final = hand_value(player_cards)
+            await self.end_game(interaction, player_val_final, dealer_val)
+            self.stop()
+
+    await interaction.followup.send(f"ブラックジャック開始！\nあなたの手札: {player_cards}（合計{player_val}）\nディーラーの見えているカード: [{dealer_cards[0]}, ?]\nヒットかスタンドを選んでください。", view=BlackjackView())
+
 
 slot_emojis = ["🍒", "🍋", "🍉", "🍇", "⭐"]
 
