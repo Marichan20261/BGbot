@@ -133,7 +133,11 @@ async def daily(interaction: discord.Interaction):
     today = datetime.date.today()
     last_daily = profile.get("last_daily")
     if last_daily:
-        last_date = datetime.date.fromisoformat(last_daily)
+        if isinstance(last_daily, str):
+            last_date = datetime.date.fromisoformat(last_daily)
+        else:
+            # 例えば初回や値がない場合は過去日付をセット
+            last_date = datetime.date.min
         delta = (today - last_date).days
         if delta == 0:
             await interaction.response.send_message("今日はもう受け取り済みです！")
