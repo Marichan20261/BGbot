@@ -16,6 +16,7 @@ from flask import Flask
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import threading
+import logging
 
 
 DATABASE_URL = os.environ['DATABASE_URL']
