@@ -144,6 +144,7 @@ async def daily(interaction: discord.Interaction):
             last_date = None
 
     logging.info(f"[daily] today: {today}, last_daily_str: {last_daily_str}, last_date: {last_date}")
+    print(f"[daily] today: {today}, last_daily_str: {last_daily_str}, last_date: {last_date}")
 
     if last_date == today:
         # 今日すでに受け取っていたら拒否
