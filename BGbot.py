@@ -77,6 +77,8 @@ def update_user_profile(user_id, profile):
                 user_id
             ))
             conn.commit()
+
+
 def check_titles(user_id, profile):
     if "titles" not in profile:
         profile["titles"] = []
@@ -95,7 +97,10 @@ def check_titles(user_id, profile):
         if title not in profile["titles"] and condition(profile):
             profile["titles"].append(title)
             new_titles.append(title)
-    update_user_profile(user_id, profile)
+
+    if new_titles:
+        update_user_profile(user_id, profile)  # 忘れずに保存
+
     return new_titles
 
 
