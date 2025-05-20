@@ -18,7 +18,7 @@ from psycopg2.extras import RealDictCursor
 import threading
 import logging
 
-logging.basicConfig(level=logging.INFO)
+
 
 DATABASE_URL = os.environ['DATABASE_URL']
 
@@ -131,34 +131,35 @@ def channel_only(func):
 @bot.tree.command(name="daily", description="1日1回のログインボーナスを受け取ろう！")
 @channel_only
 async def daily(interaction: discord.Interaction):
-    await interaction.response.defer()
-
+    await interaction.response.defer()  # 遅延応答
     profile = get_user_profile(interaction.user.id)
     today = datetime.date.today()
 
-    last_daily_str = profile.get("last_daily")
+    last_daily = profile.get("last_daily")
     last_date = None
-    if last_daily_str:
-        try:
-            last_date = datetime.date.fromisoformat(last_daily_str)
-        except Exception:
-            last_date = None
 
-    logging.info(f"[daily] today: {today}, last_daily_str: {last_daily_str}, last_date: {last_date}")
-    print(f"[daily] today: {today}, last_daily_str: {last_daily_str}, last_date: {last_date}")
+    if last_daily:
+        # 文字列型 or datetime型のどちらでも対応
+        if isinstance(last_daily, str):
+            try:
+                last_date = datetime.date.fromisoformat(last_daily)
+            except ValueError:
+                pass
+        elif isinstance(last_daily, datetime.datetime):
+            last_date = last_daily.date()
+        elif isinstance(last_daily, datetime.date):
+            last_date = last_daily
+
+    # ログ出力（Renderダッシュボードで確認可能）
+    logging.info(f"[daily] today: {today}, last_daily: {last_daily}, last_date: {last_date}")
 
     if last_date == today:
-        # 今日すでに受け取っていたら拒否
         await interaction.followup.send("今日はもう受け取り済みです！")
         return
 
-    # 連続日数判定
-    if last_date:
-        delta = (today - last_date).days
-        if delta == 1:
-            profile["streak"] = profile.get("streak", 1) + 1
-        else:
-            profile["streak"] = 1
+    # streak 判定
+    if last_date == today - datetime.timedelta(days=1):
+        profile["streak"] += 1
     else:
         profile["streak"] = 1
 
@@ -172,17 +173,17 @@ async def daily(interaction: discord.Interaction):
         bonus += 100
         msg += "\n🎁 5日連続ログインボーナス：+100グラント！"
 
-    profile["money"] = profile.get("money", 0) + bonus
+    profile["money"] += bonus
     profile["last_daily"] = today.isoformat()
-    profile["total_logins"] = profile.get("total_logins", 0) + 1
+    profile["total_logins"] += 1
 
     update_user_profile(interaction.user.id, profile)
-
     titles = check_titles(interaction.user.id, profile)
     if titles:
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
 
     await interaction.followup.send(msg)
+
 
 
 
