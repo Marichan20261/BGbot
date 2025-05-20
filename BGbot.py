@@ -129,23 +129,30 @@ def channel_only(func):
 @bot.tree.command(name="daily", description="1日1回のログインボーナスを受け取ろう！")
 @channel_only
 async def daily(interaction: discord.Interaction):
+    await interaction.response.defer()  # 最初にdefer
+
     profile = get_user_profile(interaction.user.id)
     today = datetime.date.today()
     last_daily = profile.get("last_daily")
-    if last_daily:
-        if isinstance(last_daily, str):
+
+    if last_daily and isinstance(last_daily, str):
+        try:
             last_date = datetime.date.fromisoformat(last_daily)
-        else:
-            # 例えば初回や値がない場合は過去日付をセット
-            last_date = datetime.date.min
+        except ValueError:
+            last_date = None
+    else:
+        last_date = None
+
+    if last_date == today:
+        await interaction.followup.send("今日はもう受け取り済みです！")
+        return
+
+    if last_date:
         delta = (today - last_date).days
-        if delta == 0:
-            await interaction.response.send_message("今日はもう受け取り済みです！")
-            return
-        elif delta == 1:
+        if delta == 1:
             profile["streak"] += 1
         else:
-            profile["streak"] = 1  # streakリセット
+            profile["streak"] = 1
     else:
         profile["streak"] = 1
 
@@ -161,12 +168,15 @@ async def daily(interaction: discord.Interaction):
 
     profile["money"] += bonus
     profile["last_daily"] = today.isoformat()
-    profile["total_logins"] += 1
+    profile["total_logins"] = profile.get("total_logins", 0) + 1
+
     update_user_profile(interaction.user.id, profile)
     titles = check_titles(interaction.user.id, profile)
     if titles:
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
-    await interaction.response.send_message(msg)
+
+    await interaction.followup.send(msg)  # deferしたらfollowup.sendにする
+
 
 # /status
 @bot.tree.command(name="status", description="現在の状態を確認します")
