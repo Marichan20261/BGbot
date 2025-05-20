@@ -209,6 +209,8 @@ async def achievement(interaction: discord.Interaction):
 @app_commands.describe(guess="表か裏、または0(表)・1(裏)")
 @channel_only
 async def coinflip(interaction: discord.Interaction, guess: str):
+    await interaction.response.defer()  # これを追加
+
     result = random.choice(["表", "裏"])
     profile = get_user_profile(interaction.user.id)
     guess = guess.strip()
@@ -217,7 +219,7 @@ async def coinflip(interaction: discord.Interaction, guess: str):
     elif guess == "1":
         guess = "裏"
     if guess not in ["表", "裏"]:
-        await interaction.response.send_message("表・裏、または0・1で入力してください。")
+        await interaction.followup.send("表・裏、または0・1で入力してください。")
         return
     profile["gamble_count"] += 1
     if guess == result:
@@ -230,7 +232,8 @@ async def coinflip(interaction: discord.Interaction, guess: str):
     titles = check_titles(interaction.user.id, profile)
     if titles:
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
-    await interaction.response.send_message(msg)
+    await interaction.followup.send(msg)
+
 
 # /russianRoulette
 roulette_sessions = {}
