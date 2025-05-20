@@ -129,28 +129,29 @@ def channel_only(func):
 @bot.tree.command(name="daily", description="1日1回のログインボーナスを受け取ろう！")
 @channel_only
 async def daily(interaction: discord.Interaction):
-    await interaction.response.defer()  # 最初にdefer
+    await interaction.response.defer()
 
     profile = get_user_profile(interaction.user.id)
     today = datetime.date.today()
-    last_daily = profile.get("last_daily")
 
-    if last_daily and isinstance(last_daily, str):
+    last_daily_str = profile.get("last_daily")
+    last_date = None
+    if last_daily_str:
         try:
-            last_date = datetime.date.fromisoformat(last_daily)
-        except ValueError:
+            last_date = datetime.date.fromisoformat(last_daily_str)
+        except Exception:
             last_date = None
-    else:
-        last_date = None
 
     if last_date == today:
+        # 今日すでに受け取っていたら拒否
         await interaction.followup.send("今日はもう受け取り済みです！")
         return
 
+    # 連続日数判定
     if last_date:
         delta = (today - last_date).days
         if delta == 1:
-            profile["streak"] += 1
+            profile["streak"] = profile.get("streak", 1) + 1
         else:
             profile["streak"] = 1
     else:
@@ -166,16 +167,18 @@ async def daily(interaction: discord.Interaction):
         bonus += 100
         msg += "\n🎁 5日連続ログインボーナス：+100グラント！"
 
-    profile["money"] += bonus
+    profile["money"] = profile.get("money", 0) + bonus
     profile["last_daily"] = today.isoformat()
     profile["total_logins"] = profile.get("total_logins", 0) + 1
 
     update_user_profile(interaction.user.id, profile)
+
     titles = check_titles(interaction.user.id, profile)
     if titles:
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
 
-    await interaction.followup.send(msg)  # deferしたらfollowup.sendにする
+    await interaction.followup.send(msg)
+
 
 
 # /status
