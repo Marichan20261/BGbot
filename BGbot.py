@@ -432,6 +432,7 @@ async def blackjack(interaction: discord.Interaction, bet: int):
 
         async def end_game(self, interaction, player_val, dealer_val):
             # 結果判定と報酬計算
+            user_id = interaction.user.id  # ここで取得
             if player_val > 21:
                 # バースト
                 profile["money"] -= bet
