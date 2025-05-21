@@ -820,13 +820,11 @@ async def generate_gemini_reply(user_input, display_name, nickname):
     response = model.generate_content(full_prompt)
     return response.text
 
-@bot.event
+@client.event
 async def on_message(message):
-    # Bot自身のメッセージは無視
     if message.author.bot:
         return
 
-    # DMかどうか判定
     if isinstance(message.channel, discord.DMChannel):
         display_name = message.author.display_name
         user_input = message.content.replace(f"<@{client.user.id}>", "").strip()
