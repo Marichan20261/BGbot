@@ -810,6 +810,16 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Botログイン完了: {bot.user}")
 
+# Gemini 応答生成関数
+async def generate_gemini_reply(user_input, display_name, nickname):
+    full_prompt = (
+        f"{SYSTEM_PROMPT}\n"
+        f"話しかけてきた人の表示名は「{display_name}」です。\n"
+        f"{user_input}"
+    )
+    response = model.generate_content(full_prompt)
+    return response.text
+
 @bot.event
 async def on_message(message):
     # Bot自身のメッセージは無視
@@ -818,13 +828,31 @@ async def on_message(message):
 
     # DMかどうか判定
     if isinstance(message.channel, discord.DMChannel):
-        # ここにDM内での会話ロジックを書く
-        await message.channel.send(f"こんにちは、{message.author.name}さん。何かお困りですか？")
-        
-        # 例：チケット効果に応じたフラグを見て応答を変える
-        # profile = get_user_profile(message.author.id)
-        # if "ticket_used" in profile:
-        #     await message.channel.send("チケットで開放された特別な機能です。")
+        display_name = message.author.display_name
+        user_input = message.content.replace(f"<@{client.user.id}>", "").strip()
+
+        # リプライ元メッセージの取得
+        referenced_content = ""
+        if message.reference and isinstance(message.reference.resolved, discord.Message):
+            referenced_message = message.reference.resolved
+            referenced_content = referenced_message.content.strip()
+
+        await message.channel.typing()
+
+        if user_input == "" and referenced_content == "":
+            await message.channel.send(f"{nickname}さん、何かご用ですか？")
+        else:
+            combined_input = ""
+            if referenced_content:
+                combined_input += f"引用されたメッセージ: {referenced_content}\n"
+            combined_input += user_input
+
+            reply = await generate_gemini_reply(combined_input, display_name, nickname)
+
+            # 文字数制限対応：1999文字ずつに分割して送信
+            max_length = 1999
+            for i in range(0, len(reply), max_length):
+                await message.channel.send(reply[i:i + max_length])
 
     await bot.process_commands(message)  # コマンド処理も忘れずに
 
