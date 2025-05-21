@@ -291,32 +291,31 @@ async def shop(interaction: discord.Interaction):
 
 @bot.tree.command(name="item", description="自分の所持アイテムを確認します")
 async def item(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT s.name, s.type, u.equipped 
-                FROM user_items u
-                JOIN shop_items s ON u.item_id = s.item_id
-                WHERE u.user_id = %s
-            """, (user_id,))
-            items = cur.fetchall()
+    profile = get_user_profile(interaction.user.id)
+    items = profile.get("items") or []
 
     if not items:
-        await interaction.response.send_message("アイテムを所持していません。")
+        await interaction.response.send_message("アイテムを所持していません。", ephemeral=True)
         return
 
     msg = "**🎒 所持アイテム**\n"
+    item_counts = {}
+
     for item in items:
-        status = "（装備中）" if item["equipped"] else ""
-        msg += f"- {item['name']} [{item['type']}] {status}\n"
-    
-    await interaction.response.send_message(msg)
+        item_counts[item] = item_counts.get(item, 0) + 1
+
+    for name, count in item_counts.items():
+        msg += f"- {name} x{count}\n"
+
+    await interaction.response.send_message(msg, ephemeral=True)
+
 @bot.tree.command(name="use", description="アイテムを装備します")
 @app_commands.describe(item_name="使用したいアイテム名")
 async def use(interaction: discord.Interaction, item_name: str):
     profile = get_user_profile(interaction.user.id)
-    if item_name not in profile["items"] or profile["items"][item_name] <= 0:
+    items = profile.get("items") or []
+
+    if item_name not in items:
         await interaction.response.send_message(f"{item_name} を持っていません。", ephemeral=True)
         return
 
@@ -330,13 +329,11 @@ async def use(interaction: discord.Interaction, item_name: str):
     else:
         await interaction.response.send_message(f"{item_name} を使用しました。（効果はまだ未実装）", ephemeral=True)
 
-    # アイテム消費
-    profile["items"][item_name] -= 1
-    if profile["items"][item_name] == 0:
-        del profile["items"][item_name]
+    # アイテム消費（リストから1つ削除）
+    items.remove(item_name)
+    profile["items"] = items
     update_user_profile(interaction.user.id, profile)
 
-    await interaction.response.send_message(f"✅ `{item_name}` を使用しました。")
 @bot.tree.command(name="buy", description="ショップからアイテムや称号を購入します")
 @app_commands.describe(item="購入したいアイテムや称号の名前")
 @channel_only
