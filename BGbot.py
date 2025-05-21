@@ -810,6 +810,23 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Botログイン完了: {bot.user}")
 
+@bot.event
+async def on_message(message):
+    # Bot自身のメッセージは無視
+    if message.author.bot:
+        return
+
+    # DMかどうか判定
+    if isinstance(message.channel, discord.DMChannel):
+        # ここにDM内での会話ロジックを書く
+        await message.channel.send(f"こんにちは、{message.author.name}さん。何かお困りですか？")
+        
+        # 例：チケット効果に応じたフラグを見て応答を変える
+        # profile = get_user_profile(message.author.id)
+        # if "ticket_used" in profile:
+        #     await message.channel.send("チケットで開放された特別な機能です。")
+
+    await bot.process_commands(message)  # コマンド処理も忘れずに
 
 
 bot.run(TOKEN)
