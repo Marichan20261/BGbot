@@ -17,6 +17,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import threading
 import logging
+from enum import Enum
 
 
 
