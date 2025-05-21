@@ -272,6 +272,7 @@ async def on_message(message):
 #shops and others
 @bot.tree.command(name="shop", description="ショップでアイテムを見よう！")
 async def shop(interaction: discord.Interaction):
+    await interaction.response.defer() 
     with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM shop_items ORDER BY price ASC")
@@ -342,7 +343,7 @@ async def buy(interaction: discord.Interaction, item: str):
 
     with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM shop WHERE name = %s", (item,))
+            cur.execute("SELECT * FROM shop_items WHERE name = %s", (item,))
             shop_item = cur.fetchone()
 
     if not shop_item:
@@ -394,37 +395,41 @@ async def profile(interaction: discord.Interaction, user: discord.User = None):
 
 
 
-# /daily
 @bot.tree.command(name="daily", description="1日1回のログインボーナスを受け取ろう！")
 @channel_only
 async def daily(interaction: discord.Interaction):
-    await interaction.response.defer()  # 遅延応答
+    await interaction.response.defer()
     profile = get_user_profile(interaction.user.id)
-    today = datetime.date.today()
+    import datetime
+
+    today = datetime.datetime.utcnow().date()
 
     last_daily = profile.get("last_daily")
     last_date = None
 
     if last_daily:
-        # 文字列型 or datetime型のどちらでも対応
         if isinstance(last_daily, str):
             try:
                 last_date = datetime.date.fromisoformat(last_daily)
             except ValueError:
-                pass
+                try:
+                    last_date = datetime.datetime.fromisoformat(last_daily).date()
+                except ValueError:
+                    last_date = None
         elif isinstance(last_daily, datetime.datetime):
             last_date = last_daily.date()
         elif isinstance(last_daily, datetime.date):
             last_date = last_daily
 
-    # ログ出力（Renderダッシュボードで確認可能）
+    if "total_logins" not in profile:
+        profile["total_logins"] = 0
+
     logging.info(f"[daily] today: {today}, last_daily: {last_daily}, last_date: {last_date}")
 
     if last_date == today:
         await interaction.followup.send("今日はもう受け取り済みです！")
         return
 
-    # streak 判定
     if last_date == today - datetime.timedelta(days=1):
         profile["streak"] += 1
     else:
