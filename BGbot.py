@@ -229,7 +229,6 @@ async def lottery(interaction: discord.Interaction):
 #DM
 intents = discord.Intents.default()
 intents.message_content = True
-client = discord.Client(intents=intents)
 
 async def query_gemini_api(user_message: str) -> str:
     headers = {
@@ -258,15 +257,20 @@ async def query_gemini_api(user_message: str) -> str:
             else:
                 return f"APIエラー: {resp.status}"
 
-@client.event
+@bot.event
 async def on_message(message):
-    if message.author == client.user:
+    # ボット自身のメッセージは無視
+    if message.author == bot.user:
         return
 
+    # DMチャンネルのみ対応
     if isinstance(message.channel, discord.DMChannel):
         user_msg = message.content
         reply = await query_gemini_api(user_msg)
         await message.channel.send(reply)
+    else:
+        # コマンドの処理を忘れず呼ぶ
+        await bot.process_commands(message)
 
 
 #shops and others
@@ -855,4 +859,6 @@ async def on_message(message):
     await bot.process_commands(message)  # コマンド処理も忘れずに
 
 
-bot.run(TOKEN)
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
+    bot.run(TOKEN)
