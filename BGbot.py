@@ -131,6 +131,267 @@ def channel_only(func):
         return await func(interaction, *args, **kwargs)
     return wrapper
 
+class RankType(Enum):
+    money = "money"
+    gamble = "gamble"
+
+# 選択肢を表示するために Enum から str へ変換
+@app_commands.choices(type=[
+    app_commands.Choice(name="所持金", value="money"),
+    app_commands.Choice(name="ギャンブル回数", value="gamble"),
+])
+@bot.tree.command(name="ranking", description="ランキングを表示します（所持金 or ギャンブル回数）")
+async def ranking(interaction: discord.Interaction, type: app_commands.Choice[str]):
+    await interaction.response.defer()
+
+    column_map = {
+        "money": ("money", "💰 所持金ランキング", "グラント"),
+        "gamble": ("gamble_count", "🎲 ギャンブル回数ランキング", "回"),
+    }
+
+    if type.value not in column_map:
+        await interaction.followup.send("無効なランキングタイプです。")
+        return
+
+    column, title, unit = column_map[type.value]
+
+    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT user_id, {column} FROM users
+                ORDER BY {column} DESC
+                LIMIT 10;
+            """)
+            results = cur.fetchall()
+
+    ranking_msg = f"**{title} TOP10**\n"
+    for idx, row in enumerate(results, start=1):
+        try:
+            user = await bot.fetch_user(row["user_id"])
+            username = user.display_name
+        except:
+            username = f"User ID: {row['user_id']}"
+        ranking_msg += f"{idx}. {username}：{row[column]} {unit}\n"
+
+    await interaction.followup.send(ranking_msg)
+#lottery
+# グローバル変数（初期化）
+DAILY_LOTTERY_DATE = None
+DAILY_WINNING_NUMBER = None
+
+def get_daily_lottery_number():
+    global DAILY_LOTTERY_DATE, DAILY_WINNING_NUMBER
+    today = datetime.utcnow().date()
+    if DAILY_LOTTERY_DATE != today:
+        DAILY_LOTTERY_DATE = today
+        DAILY_WINNING_NUMBER = f"{random.randint(0, 99999):05}"
+    return DAILY_WINNING_NUMBER
+@bot.tree.command(name="lottery", description="宝くじを引いてみよう！")
+@channel_only
+async def lottery(interaction: discord.Interaction):
+    profile = get_user_profile(interaction.user.id)
+
+    if profile["money"] < 100:
+        await interaction.response.send_message("参加費100グラントが足りません。")
+        return
+
+    profile["money"] -= 100
+    user_number = f"{random.randint(0, 99999):05}"
+
+    # 当選番号と比較
+    prize = 0
+    if user_number == DAILY_WINNING_NUMBER:
+        prize = 10000
+        result_msg = "🎉 一等！完全一致！"
+    elif user_number[-3:] == DAILY_WINNING_NUMBER[-3:]:
+        prize = 1000
+        result_msg = "✨ 二等！下3桁一致！"
+    elif user_number[-2:] == DAILY_WINNING_NUMBER[-2:]:
+        prize = 300
+        result_msg = "🎊 三等！下2桁一致！"
+    else:
+        result_msg = "💔 ハズレ……また挑戦してね！"
+
+    profile["money"] += prize
+    update_user_profile(interaction.user.id, profile)
+
+    msg = (
+        f"🎟 あなたの番号：{user_number}\n"
+        f"🎯 今日の当選番号：{DAILY_WINNING_NUMBER}\n"
+        f"{result_msg}"
+    )
+    if prize > 0:
+        msg += f"\n💰 賞金：{prize}グラント獲得！"
+
+    await interaction.response.send_message(msg)
+
+#DM
+intents = discord.Intents.default()
+intents.message_content = True
+client = discord.Client(intents=intents)
+
+async def query_gemini_api(user_message: str) -> str:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {GOOGLE_API_KEY}"
+    }
+    payload = {
+        "prompt": {
+            "messages": [
+                {"author": "system", "content": character_text},
+                {"author": "user", "content": user_message}
+            ]
+        },
+        "temperature": 0.7,
+        "maxTokens": 512
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(GEMINI_API_URL, headers=headers, json=payload) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                try:
+                    return data["candidates"][0]["message"]["content"].strip()
+                except (KeyError, IndexError):
+                    return "すみません、応答を取得できませんでした。"
+            else:
+                return f"APIエラー: {resp.status}"
+
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if isinstance(message.channel, discord.DMChannel):
+        user_msg = message.content
+        reply = await query_gemini_api(user_msg)
+        await message.channel.send(reply)
+
+
+#shops and others
+@bot.tree.command(name="shop", description="ショップでアイテムを見よう！")
+async def shop(interaction: discord.Interaction):
+    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM shop_items ORDER BY price ASC")
+            items = cur.fetchall()
+    if not items:
+        await interaction.response.send_message("ショップにアイテムが登録されていません。")
+        return
+
+    msg = "**🛒 ショップ一覧**\n"
+    for item in items:
+        msg += f"- `{item['name']}`（{item['price']}グラント）: {item['description']}\n"
+
+    await interaction.response.send_message(msg)
+@bot.tree.command(name="item", description="自分の所持アイテムを確認します")
+async def item(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT s.name, s.type, u.equipped 
+                FROM user_items u
+                JOIN shop_items s ON u.item_id = s.item_id
+                WHERE u.user_id = %s
+            """, (user_id,))
+            items = cur.fetchall()
+
+    if not items:
+        await interaction.response.send_message("アイテムを所持していません。")
+        return
+
+    msg = "**🎒 所持アイテム**\n"
+    for item in items:
+        status = "（装備中）" if item["equipped"] else ""
+        msg += f"- {item['name']} [{item['type']}] {status}\n"
+    
+    await interaction.response.send_message(msg)
+@bot.tree.command(name="use", description="アイテムを装備します")
+@app_commands.describe(item_name="使用したいアイテム名")
+async def use(interaction: discord.Interaction, item_name: str):
+    profile = get_user_profile(interaction.user.id)
+    if item_name not in profile["items"] or profile["items"][item_name] <= 0:
+        await interaction.response.send_message(f"{item_name} を持っていません。", ephemeral=True)
+        return
+
+    if item_name == "ticket":
+        try:
+            await interaction.user.send("🎫 チケットを使いました！ここから特別な会話を始めましょう。")
+            await interaction.response.send_message("DMを送信しました！", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("DMを送れませんでした。DMを許可しているか確認してください。", ephemeral=True)
+            return
+    else:
+        await interaction.response.send_message(f"{item_name} を使用しました。（効果はまだ未実装）", ephemeral=True)
+
+    # アイテム消費
+    profile["items"][item_name] -= 1
+    if profile["items"][item_name] == 0:
+        del profile["items"][item_name]
+    update_user_profile(interaction.user.id, profile)
+
+    await interaction.response.send_message(f"✅ `{item_name}` を使用しました。")
+@bot.tree.command(name="buy", description="ショップからアイテムや称号を購入します")
+@app_commands.describe(item="購入したいアイテムや称号の名前")
+@channel_only
+async def buy(interaction: discord.Interaction, item: str):
+    user_id = interaction.user.id
+    profile = get_user_profile(user_id)
+
+    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM shop WHERE name = %s", (item,))
+            shop_item = cur.fetchone()
+
+    if not shop_item:
+        await interaction.response.send_message("そのアイテムは存在しません。")
+        return
+
+    if profile["money"] < shop_item["price"]:
+        await interaction.response.send_message(f"所持金が足りません！（必要：{shop_item['price']}グラント）")
+        return
+
+    # 所有済みチェック
+    owned = profile.get("items", [])
+    if item in owned:
+        await interaction.response.send_message("既に所持しています。")
+        return
+
+    # 購入処理
+    profile["money"] -= shop_item["price"]
+    profile.setdefault("items", []).append(item)
+
+    with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET money=%s, items=%s WHERE user_id=%s",
+                        (profile["money"], profile["items"], user_id))
+            conn.commit()
+
+    await interaction.response.send_message(f"{item} を購入しました！ -{shop_item['price']}グラント")
+@bot.tree.command(name="profile", description="自分や他人のプロフィールを表示します")
+@app_commands.describe(user="（任意）プロフィールを確認するユーザー")
+@channel_only
+async def profile(interaction: discord.Interaction, user: discord.User = None):
+    target = user or interaction.user
+    profile = get_user_profile(target.id)
+
+    titles = ", ".join(profile.get("titles", [])) or "なし"
+    items = ", ".join(profile.get("items", [])) or "なし"
+    streak = profile.get("streak", 0)
+    money = profile.get("money", 0)
+    total = profile.get("gamble_count", 0)
+
+    embed = discord.Embed(title=f"{target.display_name}のプロフィール", color=discord.Color.blue())
+    embed.add_field(name="💰 所持金", value=f"{money} グラント", inline=True)
+    embed.add_field(name="🎲 ギャンブル回数", value=f"{total} 回", inline=True)
+    embed.add_field(name="🔥 ログイン連続日数", value=f"{streak} 日", inline=True)
+    embed.add_field(name="🏅 称号", value=titles, inline=False)
+    embed.add_field(name="🎁 所持アイテム", value=items, inline=False)
+
+    await interaction.response.send_message(embed=embed)
+
+
 
 # /daily
 @bot.tree.command(name="daily", description="1日1回のログインボーナスを受け取ろう！")
