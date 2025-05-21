@@ -2,4 +2,5 @@ discord.py
 google-generativeai
 python-dotenv
 flask
+Enum
 psycopg2-binary
