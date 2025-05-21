@@ -272,20 +272,23 @@ async def on_message(message):
 #shops and others
 @bot.tree.command(name="shop", description="ショップでアイテムを見よう！")
 async def shop(interaction: discord.Interaction):
-    await interaction.response.defer() 
+    await interaction.response.defer()  # これでインタラクションは応答済み状態になる
+
     with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM shop_items ORDER BY price ASC")
             items = cur.fetchall()
+
     if not items:
-        await interaction.response.send_message("ショップにアイテムが登録されていません。")
+        await interaction.followup.send("ショップにアイテムが登録されていません。")  # ← 修正ポイント
         return
 
     msg = "**🛒 ショップ一覧**\n"
     for item in items:
         msg += f"- `{item['name']}`（{item['price']}グラント）: {item['description']}\n"
 
-    await interaction.response.send_message(msg)
+    await interaction.followup.send(msg)  # ← 修正ポイント
+
 @bot.tree.command(name="item", description="自分の所持アイテムを確認します")
 async def item(interaction: discord.Interaction):
     user_id = interaction.user.id
