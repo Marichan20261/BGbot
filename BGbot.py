@@ -343,6 +343,13 @@ async def use(interaction: discord.Interaction, item_name: str):
         except discord.Forbidden:
             await interaction.response.send_message("DMを送れませんでした。DMを許可しているか確認してください。", ephemeral=True)
             return
+
+    elif item_name == "VIP称号":
+        achievements = profile.get("achievements", {})
+        achievements["VIP"] = True
+        profile["achievements"] = achievements
+        await interaction.response.send_message("👑 VIP称号を装備しました！", ephemeral=True)
+
     else:
         await interaction.response.send_message(f"{item_name} を使用しました。（効果はまだ未実装）", ephemeral=True)
 
@@ -350,6 +357,7 @@ async def use(interaction: discord.Interaction, item_name: str):
     items.remove(item_name)
     profile["items"] = items
     update_user_profile(interaction.user.id, profile)
+
 
 @bot.tree.command(name="buy", description="ショップからアイテムや称号を購入します")
 @app_commands.describe(item="購入したいアイテムや称号の名前")
@@ -472,22 +480,6 @@ async def daily(interaction: discord.Interaction):
         msg += "\n" + "\n".join([f"🏅 新しい称号獲得：{t}" for t in titles])
 
     await interaction.followup.send(msg)
-
-
-
-
-# /status
-@bot.tree.command(name="status", description="現在の状態を確認します")
-@channel_only
-async def status(interaction: discord.Interaction):
-    profile = get_user_profile(interaction.user.id)
-    await interaction.response.send_message(
-        f"👤 ニックネーム：{profile['nickname']}\n"
-        f"💰 所持金：{profile['money']}グラント\n"
-        f"📆 連続ログイン：{profile['streak']}日\n"
-        f"🎰 ギャンブル回数：{profile['gamble_count']}\n"
-        f"🏅 称号：{', '.join(profile['titles']) if profile['titles'] else 'なし'}"
-    )
 
 # /achievement
 @bot.tree.command(name="achievement", description="称号一覧と獲得状況を表示します")
