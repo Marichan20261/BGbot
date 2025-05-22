@@ -824,7 +824,7 @@ async def generate_gemini_reply(user_input, display_name, nickname):
     response = model.generate_content(full_prompt)
     return response.text
 
-@client.event
+@bot.event
 async def on_message(message):
     if message.author.bot:
         return
