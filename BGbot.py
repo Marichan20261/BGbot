@@ -83,6 +83,9 @@ def update_user_profile(user_id, profile):
 def check_titles(user_id, profile):
     if "titles" not in profile:
         profile["titles"] = []
+    if "items" not in profile:
+        profile["items"] = []
+
     new_titles = []
     conditions = [
         ("常連", lambda p: p.get("streak",0) >= 7),
@@ -92,17 +95,20 @@ def check_titles(user_id, profile):
         ("ビギナーズラック", lambda p: p.get("gamble_count",0) >= 20),
         ("中堅どころ", lambda p: p.get("gamble_count",0) >= 200),
         ("賭ケグルイ", lambda p: p.get("gamble_count",0) >= 2000),
-        ("VIP待遇", lambda p: p.get("affection",0) >= 75 and p.get("gamble_count",0) >= 200)
+        # VIP待遇の条件にitems内の'VIP待遇'も追加
+        ("VIP待遇", lambda p: (p.get("affection",0) >= 75 and p.get("gamble_count",0) >= 200) or ("VIP待遇" in p.get("items", [])))
     ]
+
     for title, condition in conditions:
         if title not in profile["titles"] and condition(profile):
             profile["titles"].append(title)
             new_titles.append(title)
 
     if new_titles:
-        update_user_profile(user_id, profile)  # 忘れずに保存
+        update_user_profile(user_id, profile)
 
     return new_titles
+
 
 
 def has_vip(profile):
