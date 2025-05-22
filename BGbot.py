@@ -345,18 +345,24 @@ async def use(interaction: discord.Interaction, item_name: str):
             return
 
     elif item_name == "VIP称号":
-        achievements = profile.get("achievements", {})
-        achievements["VIP"] = True
-        profile["achievements"] = achievements
-        await interaction.response.send_message("👑 VIP称号を装備しました！", ephemeral=True)
+        # VIP称号のアチーブメントを有効にする
+        titles = profile.get("titles", [])
+        if "VIP待遇" not in titles:
+            titles.append("VIP待遇")
+            profile["titles"] = titles
+            await interaction.response.send_message("👑 VIP称号を装備しました！", ephemeral=True)
+        else:
+            await interaction.response.send_message("既にVIP称号を持っています。", ephemeral=True)
 
     else:
         await interaction.response.send_message(f"{item_name} を使用しました。（効果はまだ未実装）", ephemeral=True)
 
-    # アイテム消費（リストから1つ削除）
+    # アイテムを消費（リストから1つ削除）
     items.remove(item_name)
     profile["items"] = items
+
     update_user_profile(interaction.user.id, profile)
+
 
 
 @bot.tree.command(name="buy", description="ショップからアイテムや称号を購入します")
