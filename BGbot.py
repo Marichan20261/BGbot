@@ -175,7 +175,28 @@ async def ranking(interaction: discord.Interaction, type: app_commands.Choice[st
         ranking_msg += f"{idx}. {username}：{row[column]} {unit}\n"
 
     await interaction.followup.send(ranking_msg)
+
+
 #lottery
+import random
+from datetime import datetime
+import discord
+from discord.ext import commands
+
+# グローバル変数
+DAILY_LOTTERY_DATE = None
+DAILY_WINNING_NUMBER = None
+
+# 宝くじ番号生成関数
+def get_daily_lottery_number():
+    global DAILY_LOTTERY_DATE, DAILY_WINNING_NUMBER
+    today = datetime.utcnow().date()
+    if DAILY_LOTTERY_DATE != today:
+        DAILY_LOTTERY_DATE = today
+        DAILY_WINNING_NUMBER = f"{random.randint(0, 99999):05}"
+    return DAILY_WINNING_NUMBER
+
+# /lottery コマンド
 @bot.tree.command(name="lottery", description="宝くじを引いてみよう！")
 @channel_only
 async def lottery(interaction: discord.Interaction):
@@ -188,10 +209,10 @@ async def lottery(interaction: discord.Interaction):
     profile["money"] -= 100
     user_number = f"{random.randint(0, 99999):05}"
 
-    # 📌 当選番号を取得・初期化
+    # 当選番号を取得・初期化
     winning_number = get_daily_lottery_number()
 
-    # 当選番号と比較
+    # 番号比較
     prize = 0
     if user_number == winning_number:
         prize = 10000
