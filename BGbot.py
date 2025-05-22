@@ -429,6 +429,8 @@ async def profile(interaction: discord.Interaction, user: discord.User = None):
     embed.add_field(name="🎁 所持アイテム", value=items, inline=False)
 
     await interaction.response.send_message(embed=embed)
+def has_vip(profile):
+    return "VIP待遇" in profile.get("titles", []) or "VIP待遇" in profile.get("items", [])
 
 
 
@@ -780,22 +782,26 @@ slot_emojis = ["🍒", "🍋", "🍉", "🍇", "⭐"]
 @bot.tree.command(name="slot", description="スロットマシンで遊ぼう！")
 @app_commands.describe(bet="掛金（1〜255の整数）")
 async def slot(interaction: Interaction, bet: int):
-    if bet < 1 or bet > 255:
+    profile = get_user_profile(interaction.user.id)
+
+    # VIP待遇の称号またはアイテムをチェック
+    is_vip = "VIP待遇" in profile.get("titles", []) or "VIP待遇" in profile.get("items", [])
+
+    # 掛け金の上限チェック（非VIPのみ）
+    if not is_vip and (bet < 1 or bet > 255):
         await interaction.response.send_message("掛金は1から255の間で指定してください。", ephemeral=True)
         return
+    elif bet < 1:
+        await interaction.response.send_message("掛金は1以上で指定してください。", ephemeral=True)
+        return
 
-    profile = get_user_profile(interaction.user.id)
     if profile["money"] < bet:
         await interaction.response.send_message("所持金が足りません。", ephemeral=True)
         return
 
-    # 所持金から掛金を引く（先に払う形）
     profile["money"] -= bet
-
-    # 3つの絵柄をランダム抽選
     result = [random.choice(slot_emojis) for _ in range(3)]
 
-    # 揃い判定
     if result[0] == result[1] == result[2]:
         multiplier = 5
         msg = "🎉 3つ揃い！大当たりです！"
@@ -819,6 +825,7 @@ async def slot(interaction: Interaction, bet: int):
     embed.set_footer(text=f"現在の所持金: {profile['money']} グラント")
 
     await interaction.response.send_message(embed=embed)
+
 
 if __name__ == "__main__":
     # Flaskサーバーを別スレッドで起動
